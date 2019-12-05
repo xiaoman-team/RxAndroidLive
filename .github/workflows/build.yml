@@ -1,0 +1,26 @@
+name: Android Build
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: checkout submodule
+        run: git submodule sync --recursive && git submodule update --init --recursive
+
+      - name: Build
+        uses: xdtianyu/actions-android-ci@master
+        with:
+          args: '"
+        source /opt/setup-android-sdk.sh;
+        ./gradlew assembleDebug
+        "'
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@master
+        with:
+          name: sample
+          path: sample/build/outputs/apk/debug
