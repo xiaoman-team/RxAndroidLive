@@ -16,6 +16,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name="cn.xiaoman.library.android.rxandroidlive.sample.ObservableNotRestartActivity" />
+        <activity android:name="cn.xiaoman.library.android.rxandroidlive.sample.ObservableAutoRestartActivity" />
+        <activity android:name="cn.xiaoman.library.android.rxandroidlive.sample.FlowableNotRestartActivity" />
+        <activity android:name="cn.xiaoman.library.android.rxandroidlive.sample.FlowableAutoRestartActivity" />
+        <activity android:name="cn.xiaoman.library.android.rxandroidlive.sample.SingleActivity" />
+        <activity android:name="cn.xiaoman.library.android.rxandroidlive.sample.MaybeActivity" />
+        <activity android:name="cn.xiaoman.library.android.rxandroidlive.sample.CompleteActivity" />
+
     </application>
 
 </manifest>
