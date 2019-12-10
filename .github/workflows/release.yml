@@ -2,9 +2,8 @@ name: Android Release
 
 on:
   push:
-    # Sequence of patterns matched against refs/tags
     tags:
-      - 'v*' # Push events to matching v*, i.e. v1.0, v20.15.10
+      - '*' # Push events to matching v*, i.e. v1.0, v20.15.10
 
 jobs:
   build:
@@ -17,14 +16,46 @@ jobs:
 
       - name: build
         uses: xdtianyu/actions-android-ci@master
+        env:
+          BINTRAY_USER: ${{ secrets.BINTRAY_USER }}
+          BINTRAY_APIKEY: ${{ secrets.BINTRAY_APIKEY }}
+          VERSION_NAME: ${{ github.ref }}
         with:
           args: '"
         source /opt/setup-android-sdk.sh;
-        ./gradlew assembleDebug
+        ./gradlew :library:build;
+        ./gradlew :library:generatePomFileForMavenPublication;
+        ./gradlew :library:bintrayUpload;
+        ./gradlew :sample:assembleDebug
         "'
 
       - name: Upload Artifact
+        id: upload_artifact
         uses: actions/upload-artifact@master
         with:
           name: sample
           path: sample/build/outputs/apk/debug
+
+      - name: Create Release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create-release.outputs.upload_url }}
+          asset_path: sample/build/outputs/apk/debug/sample-debug.apk
+          asset_name: sample-debug.apk
+          asset_content_type: application/vnd.android.package-archive

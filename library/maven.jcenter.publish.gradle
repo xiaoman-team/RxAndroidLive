@@ -1,0 +1,186 @@
+def getBintrayUserProperty() {
+    return System.getenv('BINTRAY_USER')
+}
+
+def getBintrayApiKeyProperty() {
+    return System.getenv('BINTRAY_APIKEY')
+}
+
+def getGpgPassphraseProperty() {
+    return System.getenv('GPG_PASSPHRASE')
+}
+
+def getUserTokenProperty() {
+    return System.getenv('USERTOKEN')
+}
+
+def getUserPasswordProperty() {
+    return System.getenv('USERPASSWORD')
+}
+
+def getVersionNameProperty() {
+    return System.getenv('USERPASSWORD') ?: VERSION_NAME
+}
+
+apply plugin: 'maven-publish'
+
+if (project.hasProperty("android")) { // Android libraries
+    task sourcesJar(type: Jar) {
+        classifier = 'sources'
+        from android.sourceSets.main.java.srcDirs
+    }
+
+    task javadoc(type: Javadoc) {
+        failOnError false // add this line
+        source = android.sourceSets.main.java.srcDirs
+        classpath += project.files(android.getBootClasspath().join(File.pathSeparator))
+
+    }
+} else { // Java libraries
+    task sourcesJar(type: Jar, dependsOn: classes) {
+        classifier = 'sources'
+        from sourceSets.main.allSource
+    }
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+javadoc {
+    options {
+        encoding "UTF-8"
+        charSet 'UTF-8'
+    }
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+
+            groupId = POM_GROUP
+            artifactId = POM_ARTIFACT_ID
+            version = getVersionNameProperty()
+
+            artifact(sourcesJar)
+            artifact(javadocJar)
+            if (project.hasProperty("android")) {
+                artifact("$buildDir/outputs/aar/" + project.getName() + "-release.aar")
+            } else {
+                artifact("$buildDir/libs/" + project.getName() + ".jar")
+            }
+
+            pom.withXml {
+                Node root = asNode()
+                root.appendNode('name', POM_NAME)
+                root.appendNode('description', POM_DESCRIPTION)
+                root.appendNode('url', POM_URL)
+
+                def scm = root.appendNode('scm')
+                scm.appendNode('url', POM_SCM_URL)
+                scm.appendNode('connection', POM_SCM_CONNECTION)
+                scm.appendNode('developerConnection', POM_SCM_DEV_CONNECTION)
+
+                def license = root.appendNode('licenses').appendNode('license')
+                license.appendNode('name', POM_LICENCE_NAME)
+                license.appendNode('url', POM_LICENCE_URL)
+                license.appendNode('distribution', POM_LICENCE_DIST)
+
+                def developer = root.appendNode('developers').appendNode('developer')
+                developer.appendNode('id', POM_DEVELOPER_ID)
+                developer.appendNode('name', POM_DEVELOPER_NAME)
+
+                final dependenciesNode = asNode().appendNode('dependencies')
+
+                ext.addDependency = { Dependency dep, String scope ->
+                    if (dep.group == null || dep.version == null || dep.name == null || dep.name == "unspecified")
+                        return // ignore invalid dependencies
+
+                    final dependencyNode = dependenciesNode.appendNode('dependency')
+
+                    if (rootProject.name.equals(dep.group)) {
+                        dependencyNode.appendNode('groupId', POM_GROUP)
+                    } else {
+                        dependencyNode.appendNode('groupId', dep.group)
+                    }
+                    dependencyNode.appendNode('artifactId', dep.name)
+                    if ('unspecified'.equals(dep.version)) {
+                        dependencyNode.appendNode('version', VERSION_NAME)
+                    } else {
+                        dependencyNode.appendNode('version', dep.version)
+                    }
+                    dependencyNode.appendNode('scope', scope)
+
+                    if (!dep.transitive) {
+                        // If this dependency is transitive, we should force exclude all its dependencies them from the POM
+                        final exclusionNode = dependencyNode.appendNode('exclusions').appendNode('exclusion')
+                        exclusionNode.appendNode('groupId', '*')
+                        exclusionNode.appendNode('artifactId', '*')
+                    } else if (!dep.properties.excludeRules.empty) {
+                        // Otherwise add specified exclude rules
+                        final exclusionNode = dependencyNode.appendNode('exclusions').appendNode('exclusion')
+                        dep.properties.excludeRules.each { ExcludeRule rule ->
+                            exclusionNode.appendNode('groupId', rule.group ?: '*')
+                            exclusionNode.appendNode('artifactId', rule.module ?: '*')
+                        }
+                    }
+                }
+
+                // List all "compile" dependencies (for old Gradle)
+                configurations.compile.getAllDependencies().each { dep -> addDependency(dep, "compile") }
+                // List all "api" dependencies (for new Gradle) as "compile" dependencies
+                if (project.hasProperty("android")) {
+                    configurations.api.getAllDependencies().each { dep -> addDependency(dep, "compile") }
+                    // List all "implementation" dependencies (for new Gradle) as "runtime" dependencies
+                    configurations.implementation.getAllDependencies().each { dep -> addDependency(dep, "compile") }
+                }
+            }
+        }
+    }
+}
+
+apply plugin: 'com.jfrog.bintray'
+
+// gradle bintrayUpload
+bintray {
+    user = getBintrayUserProperty()
+    key = getBintrayApiKeyProperty()
+    def passphrase = getGpgPassphraseProperty()
+    def userToken = getUserTokenProperty()
+    def userPassword = getUserPasswordProperty()
+    def versionName = getVersionNameProperty()
+    publications = ['maven']
+
+    dryRun = false
+    publish = true
+    pkg {
+        repo = 'maven'
+        name = POM_ARTIFACT_ID
+        desc = POM_NAME
+        userOrg = 'xiaoman-team'
+        websiteUrl = POM_URL
+        issueTrackerUrl = ISSUE_URL
+        vcsUrl = GIT_URL
+        licenses = ['Apache-2.0']
+        labels = ['java', 'aar', 'rxjava', 'lifecycle']
+        publicDownloadNumbers = true
+
+        version {
+            name = versionName
+            vcsTag = versionName
+            gpg {
+                sign = true //Determines whether to GPG sign the files. The default is false
+                passphrase = 'passphrase' //Optional. The passphrase for GPG signing'
+            }
+            mavenCentralSync {
+                sync = false
+                //Optional (true by default). Determines whether to sync the version to Maven Central.
+                user = userToken //OSS user token
+                password = userPassword //OSS user password
+                close = '1'
+                //Optional property. By default the staging repository is closed and artifacts are released to Maven Central. You can optionally turn this behaviour off (by puting 0 as value) and release the version manually.
+            }
+        }
+    }
+}
